@@ -47,9 +47,12 @@ def tally(home):
         full_env = dict(home)
         if env:
             full_env.update(env)
+        # Standard input is a closed pipe unless the test supplies text, so
+        # "stdin is not a terminal" holds on every runner, Windows included.
         proc = subprocess.run(
             [sys.executable, "-m", "tally", *args],
             capture_output=True,
+            stdin=subprocess.DEVNULL if stdin is None else None,
             text=True,
             encoding="utf-8",
             input=stdin,

@@ -6,7 +6,8 @@
 | Rules, reports, output, CLI | First-match categorisation with explanations; monthly category and payee reports; table/CSV/JSON output with colour rules and formula guarding; all eleven commands | 1 | ~100k tokens | 15 min |
 | Tests | 163 tests: unit, end-to-end CLI via subprocess, duplicate handling, two-process concurrency, 100k-row import, privacy of messages, file permissions | 1 | ~120k tokens | 20 min |
 | Docs, CI, samples | README, configuration reference, decisions record, MIT licence, three-OS CI workflow, the three sample files byte-exact | 1 | ~130k tokens | 10 min |
-| **Total** | | **1** | **~130k tokens** | **~80 min** |
+| CI fix | Made the CLI test fixture close standard input so the forget-confirmation test holds on Windows; bumped deprecated action versions | 1 | ~140k tokens | 5 min |
+| **Total** | | **1** | **~140k tokens** | **~85 min** |
 
 ## Defects found and fixed along the way
 
@@ -17,3 +18,4 @@
 - Global options (`--color`, `--config`, `--data`) were rejected after the command name, which is where people type them. Found by the CLI colour test; fixed by accepting them in both positions.
 - Payee spelling ties were resolved by alphabetical order, so the displayed payee name depended on sort quirks. Found by the top-payees test; fixed by preferring the most frequent spelling and, on a tie, the first seen.
 - Python 3.13+ no longer raises on NUL bytes in CSV, so a binary-ish file passed through as text. Found by the NUL test failing to raise; fixed by reporting rows containing NUL as binary data.
+- On the Windows CI runner the inherited standard input counted as a console, so `tally forget` prompted, hit end-of-input and exited 0 instead of refusing without `--yes`. Found by the Windows CI job; fixed by giving test subprocesses a closed standard input, so the test states its assumption.
