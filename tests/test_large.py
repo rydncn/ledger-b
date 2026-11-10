@@ -41,3 +41,26 @@ def test_large_csv_import_and_report(tmp_path):
     # Generous bounds; the point is that nothing is quadratic.
     assert import_seconds < 60, import_seconds
     assert report_seconds < 60, report_seconds
+
+
+@pytest.mark.slow
+def test_large_ofx_import_is_linear(tmp_path):
+    rows = 60_000
+    ofx = tmp_path / "huge.ofx"
+    with open(ofx, "w", encoding="ascii") as fh:
+        fh.write("OFXHEADER:100\nDATA:OFXSGML\n\n<OFX><STMTRS><CURDEF>GBP<BANKTRANLIST>\n")
+        for i in range(rows):
+            fh.write(
+                f"<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>2026{(i % 12) + 1:02d}01"
+                f"<TRNAMT>-{i % 300}.{i % 100:02d}"
+                f"<FITID>F{i}<NAME>PAYEE {i % 400}<MEMO>Ref {i}\n"
+            )
+        fh.write("</BANKTRANLIST></STMTRS></OFX>\n")
+    config = parse_config("")
+    with Store(tmp_path / "t.db") as store:
+        store.add_account("a", "GBP", 2)
+        t0 = time.perf_counter()
+        result = import_file(store, config, ofx, "a")
+        seconds = time.perf_counter() - t0
+    assert (result.added, result.skipped) == (rows, 0)
+    assert seconds < 30, seconds

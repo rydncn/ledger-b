@@ -130,3 +130,37 @@ def test_top_payees_groups_spellings_and_ignores_income():
     ]
     assert len(top_payees(txns, RULES, 0)) == 4
     assert [ln.payee for ln in top_payees(txns, RULES, 0, {"Groceries"})] == ["B", "RENT", "A"]
+
+
+def test_rule_amounts_apply_to_accounts_with_other_decimal_places():
+    rules = parse_config('[[rules]]\ncategory = "Big"\namount_max = "-1000"\n').rules
+    yen = Transaction(
+        id=1,
+        account_id=1,
+        account="yen",
+        currency="JPY",
+        scale=0,
+        date="2026-10-01",
+        amount_minor=-5000,
+        description="RENT",
+        memo=None,
+        source_line=None,
+        import_id=1,
+    )
+    assert categorise(rules, yen)[0] == "Big"
+    dinar = Transaction(
+        id=2,
+        account_id=2,
+        account="kwd",
+        currency="KWD",
+        scale=3,
+        date="2026-10-01",
+        amount_minor=-10000,
+        description="X",
+        memo=None,
+        source_line=None,
+        import_id=1,
+    )  # 10.000 KWD out: not below -1000
+    assert categorise(rules, dinar)[0] == UNCATEGORISED
+    assert categorise(rules, txn(3, -100000, "x"))[0] == "Big"  # -1000.00 GBP, inclusive
+    assert categorise(rules, txn(4, -99999, "x"))[0] == UNCATEGORISED

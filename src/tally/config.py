@@ -17,6 +17,10 @@ from tally.errors import ConfigError
 from tally.money import AmountError, parse_decimal_string
 
 APP_DIR_NAME = "tally"
+# Rule amounts are kept at this many decimal places whatever the account's
+# currency uses, and transactions are rescaled to it for comparison. Accounts
+# allow at most this many decimals (see `tally account add --decimals`).
+RULE_SCALE = 4
 CONFIG_FILE_NAME = "config.toml"
 DATA_FILE_NAME = "tally.db"
 
@@ -75,7 +79,7 @@ class Rule:
     description: str | None = None
     pattern: re.Pattern[str] | None = None
     pattern_text: str | None = None
-    amount_min: int | None = None  # minor units
+    amount_min: int | None = None  # in units of 10**-RULE_SCALE, not the account's minor units
     amount_max: int | None = None
     account: str | None = None
 
@@ -199,6 +203,8 @@ def parse_layout(name: str, table: object) -> Layout:
     header = _bool(table, where, "header", True)
     date = _column(table["date"], where, "date")
     description = _column(table["description"], where, "description")
+    memo = _optional_column(table, where, "memo")
+    balance = _optional_column(table, where, "balance")
     if not header:
         for key, value in (
             ("date", date),
@@ -206,6 +212,8 @@ def parse_layout(name: str, table: object) -> Layout:
             ("amount", amount),
             ("money_in", money_in),
             ("money_out", money_out),
+            ("memo", memo),
+            ("balance", balance),
         ):
             if isinstance(value, str):
                 raise ConfigError(f"{where}: {key} must be a column number when header = false")
@@ -219,8 +227,8 @@ def parse_layout(name: str, table: object) -> Layout:
         amount=amount,
         money_in=money_in,
         money_out=money_out,
-        memo=_optional_column(table, where, "memo"),
-        balance=_optional_column(table, where, "balance"),
+        memo=memo,
+        balance=balance,
         date_format=date_format,
         decimal_separator=decimal,
         thousands_separator=thousands,
@@ -242,7 +250,7 @@ def _amount_bound(table: dict, where: str, key: str) -> int | None:
     if isinstance(value, float):
         value = repr(value)
     try:
-        return parse_decimal_string(str(value), scale=2)
+        return parse_decimal_string(str(value), scale=RULE_SCALE)
     except AmountError as exc:
         raise ConfigError(f"{where}: {key}: {exc}") from None
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tally.config import Rule
+from tally.config import RULE_SCALE, Rule
 from tally.store import Transaction
 
 UNCATEGORISED = "Uncategorised"
@@ -26,9 +26,12 @@ def _check(rule: Rule, txn: Transaction) -> str | None:
         return f'description contains "{rule.description}"'
     if rule.pattern is not None and not rule.pattern.search(text):
         return f"description matches /{rule.pattern_text}/"
-    if rule.amount_min is not None and txn.amount_minor < rule.amount_min:
+    # Rule amounts and transaction amounts may use different numbers of
+    # decimal places; compare at the rule's scale, exactly, in integers.
+    amount = txn.amount_minor * 10 ** (RULE_SCALE - txn.scale)
+    if rule.amount_min is not None and amount < rule.amount_min:
         return "amount is at least the minimum"
-    if rule.amount_max is not None and txn.amount_minor > rule.amount_max:
+    if rule.amount_max is not None and amount > rule.amount_max:
         return "amount is at most the maximum"
     return None
 

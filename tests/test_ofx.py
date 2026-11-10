@@ -133,3 +133,22 @@ def test_lowercase_tags_and_whitespace():
     )
     got = rows(parse_ofx_text(text, 2))
     assert got[0].description == "Spaced out" and got[0].amount_minor == 500
+
+
+def test_lowercase_ofx_after_text_whose_uppercase_is_longer():
+    text = (
+        "Bank: Straße\n<ofx><stmtrs><curdef>EUR<banktranlist>\n"
+        "<stmttrn><dtposted>20261001<trnamt>-5.00<fitid>a<name>Straßenbahn\n"
+        "</banktranlist></stmtrs></ofx>"
+    )
+    got = rows(parse_ofx_text(text, 2))
+    assert len(got) == 1 and got[0].description == "Straßenbahn" and got[0].line == 3
+
+
+def test_line_numbers_stay_right_across_many_transactions():
+    body = "".join(
+        f"<STMTTRN><DTPOSTED>20261001<TRNAMT>-1.00<FITID>{i}<NAME>N{i}\n" for i in range(500)
+    )
+    text = f"<OFX><STMTRS><CURDEF>GBP<BANKTRANLIST>\n{body}</BANKTRANLIST></STMTRS></OFX>"
+    got = rows(parse_ofx_text(text, 2))
+    assert [r.line for r in got] == list(range(2, 502))

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import stat
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -403,3 +405,48 @@ def test_imports_and_undo(ready, samples):
         "current-account",
     )
     assert "5 added, 0 already there" in r.out
+
+
+def test_damaged_data_file_is_an_error_not_a_traceback(tally, tmp_path):
+    db = tmp_path / "broken.db"
+    db.write_bytes(b"this is not a database at all, just some bytes" * 100)
+    r = tally("--data", str(db), "account", "list")
+    assert r.code == EXIT_ERROR
+    assert r.err.startswith("tally: error:") and "Traceback" not in r.err
+
+
+def test_wrong_file_does_not_leak_its_first_line(ready, tmp_path):
+    f = tmp_path / "letter.csv"
+    f.write_text("Dear Dr Smith, following our consultation, the results\nwere as follows\n")
+    r = ready("import", str(f), "--account", "current", "--layout", "current-account")
+    assert r.code == EXIT_ERROR
+    assert "Smith" not in r.err and "consultation" not in r.err
+    assert "--show-rows" in r.err
+    r = ready(
+        "import", str(f), "--account", "current", "--layout", "current-account", "--show-rows"
+    )
+    assert "Smith" in r.err
+
+
+def test_closed_pipe_is_quiet(ready, tmp_path, home):
+    import subprocess
+
+    f = tmp_path / "many.csv"
+    with open(f, "w") as fh:
+        fh.write("Date,Description,Money Out,Money In,Balance\n")
+        for i in range(4000):
+            fh.write(f"{(i % 28) + 1:02d}/10/2026,PAYEE NUMBER {i} WITH A LONG NAME,1.00,,\n")
+    ready("import", str(f), "--account", "current", "--layout", "current-account")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "tally", "transactions"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        env=home,
+        cwd=Path(__file__).resolve().parent.parent,
+    )
+    proc.stdout.read(100)
+    proc.stdout.close()
+    _, err = proc.communicate(timeout=60)
+    assert proc.returncode == EXIT_OK, err
+    assert err == b""

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import os
+import sqlite3
 import sys
 from collections.abc import Sequence
 from datetime import datetime
@@ -444,15 +445,21 @@ def _report_import(result: ImportResult, show_rows: bool, style: Style) -> None:
 
 def cmd_import(ctx: Context) -> int:
     args = ctx.args
-    result = import_file(
-        ctx.store,
-        ctx.config,
-        args.file,
-        args.account,
-        layout_name=args.layout,
-        file_type=args.type,
-        strict=args.strict,
-    )
+    try:
+        result = import_file(
+            ctx.store,
+            ctx.config,
+            args.file,
+            args.account,
+            layout_name=args.layout,
+            file_type=args.type,
+            strict=args.strict,
+        )
+    except TallyError as exc:
+        # Details quote the file, so they are shown only when asked for.
+        if args.show_rows and exc.details:
+            exc.hint = "\n  ".join(filter(None, [exc.hint, *exc.details]))
+        raise
     _report_import(result, args.show_rows, ctx.style)
     if result.rolled_back:
         return EXIT_ERROR
@@ -726,10 +733,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         warn("interrupted")
         return 130
     except BrokenPipeError:
-        # The reader went away (e.g. `tally report | head`). Nothing to say.
+        # The reader went away (e.g. `tally report | head`). Nothing to say,
+        # and nothing to flush at exit either: point the descriptor at the
+        # null device so the interpreter's final flush cannot fail again.
         with contextlib.suppress(OSError):
-            sys.stdout = open(os.devnull, "w")  # noqa: SIM115
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, sys.stdout.fileno())
         return EXIT_OK
+    except sqlite3.Error as exc:
+        error(f"the data file could not be read or written: {exc}")
+        return EXIT_ERROR
     except OSError as exc:
         error(f"{exc.strerror or exc}" + (f": {exc.filename}" if exc.filename else ""))
         return EXIT_ERROR

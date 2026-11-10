@@ -8,7 +8,7 @@ def test_starter_config_parses():
     config = parse_config(STARTER_CONFIG)
     assert set(config.layouts) == {"current-account", "credit-card"}
     assert [r.category for r in config.rules][:2] == ["Groceries", "Transport"]
-    assert config.rules[2].amount_min == 1
+    assert config.rules[2].amount_min == 100  # 0.01 at RULE_SCALE (4 decimals)
 
 
 def test_layout_defaults():
@@ -59,8 +59,8 @@ def test_rule_fields():
     )
     rule = config.rules[0]
     assert rule.pattern.search("CAFE NERO")
-    assert rule.amount_min == -5000
-    assert rule.amount_max == -1
+    assert rule.amount_min == -500000
+    assert rule.amount_max == -100
     assert rule.account == "card"
     assert len(rule.conditions()) == 4
 
@@ -101,3 +101,10 @@ def test_missing_layout_message():
     with pytest.raises(ConfigError, match="no CSV layout named 'b'") as exc:
         config.layout("b")
     assert "a" in str(exc.value)
+
+
+def test_rule_amounts_allow_up_to_four_decimals():
+    config = parse_config('[[rules]]\ncategory = "x"\namount_min = "0.0001"\n')
+    assert config.rules[0].amount_min == 1
+    with pytest.raises(ConfigError, match="decimal places"):
+        parse_config('[[rules]]\ncategory = "x"\namount_min = "0.00001"\n')

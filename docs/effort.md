@@ -10,7 +10,8 @@
 | Running-balance check | Optional `balance` layout column; each row checked against its neighbour with statement order inferred; mismatches noted by line; seven tests; docs | 1 | ~160k tokens | 15 min |
 | Import history and undo | `tally imports` lists every import with its counts; `tally undo ID` removes exactly the rows that import added, with confirmation; tests and docs | 1 | ~175k tokens | 10 min |
 | Review of undo | A defect-focused review of the new code; fixed explicit deletes with true counts, the in-transaction existence check, tolerant VACUUM, local dates, a shared confirmation helper, and a warning about undoing an earlier overlapping import | 1 | ~190k tokens | 10 min |
-| **Total** | | **1** | **~190k tokens** | **~125 min** |
+| Review of the core | A defect-focused review of every module, eight findings fixed: rule amounts on non-2-decimal currencies, a crash on `header = false` with a named memo column, quadratic OFX line counting, SQLite errors as tracebacks, a header printed from a non-statement file, a lowercase `<ofx>` offset bug, broken-pipe noise, and one file pass fewer per CSV import; eleven tests | 1 | ~215k tokens | 20 min |
+| **Total** | | **1** | **~215k tokens** | **~145 min** |
 
 ## Defects found and fixed along the way
 
@@ -26,3 +27,11 @@
 
 - `tally undo` reported a count taken before deleting and relied on `ON DELETE CASCADE`, so a connection without foreign keys would have orphaned the rows while reporting success; and a second copy undoing the same import would have succeeded at nothing. Found by a code review of the branch; fixed with explicit deletes whose row counts are reported, and an existence check inside the write transaction.
 - `VACUUM` after `forget` or `undo` could raise if another copy of Tally was reading, turning a completed deletion into a traceback. Found by the same review; it is now best effort and skipped when nothing was removed.
+- Rule `amount_min`/`amount_max` were parsed at two decimal places and compared with the account's minor units, so on a JPY account a rule for amounts below -1000 never matched. Found by reasoning about currencies with 0 or 3 decimals during the review, confirmed by a script; fixed by keeping rule amounts at four decimals and rescaling each transaction for the comparison.
+- A layout with `header = false` and a named (not numbered) `memo` or `balance` column passed validation and crashed with an assertion inside the reader. Found by the review; fixed by validating those columns too.
+- OFX line numbers were counted from the start of the file for every transaction, so a large file took time proportional to its size times its row count. Found by the review; fixed by counting forward from the last position, with a 60,000-row timing test.
+- SQLite's own errors (disk full, damaged file) were not caught, so they appeared as tracebacks. Found by the review; fixed by reporting them as a Tally error with exit code 1.
+- The missing-columns error printed the file's first line, which for a file that is not a statement at all could be anything. Found by the review; the names are now shown only with `--show-rows`.
+- A lowercase `<ofx>` tag was located in an upper-cased copy of the text, whose offsets shift after characters such as `ß`. Found by the review; fixed with a case-insensitive search of the original.
+- After `tally ... | head`, Python printed an "Exception ignored" line at exit because standard output still had buffered data. Found by the review; fixed by pointing the descriptor at the null device.
+- Each CSV import read the file three or four times (hash, one or two encoding scans, parse). Found by the review; the hash and both decoders now share one pass.

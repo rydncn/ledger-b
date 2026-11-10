@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from tally.config import Config, Layout
+from tally.encoding import scan_file
 from tally.errors import ImportError_, UsageError
 from tally.importers import Note, ParsedRow, RowProblem
 from tally.importers.csvfile import read_csv
@@ -99,14 +100,18 @@ def import_file(
         raise UsageError("--layout applies to CSV files only; OFX files describe themselves")
 
     result = ImportResult(account=account.name, file_name=path.name)
-    sha = _sha256(path)
-    result.previous = store.previous_import_of(account.id, sha)
-
     if file_type == "ofx":
+        sha = _sha256(path)
         items = read_ofx(path, account.scale)
     else:
         assert layout is not None
-        items = read_csv(path, layout, account.scale)
+        # One pass gives both the encoding and the digest.
+        try:
+            encoding, sha = scan_file(path, layout.encoding)
+        except ValueError as exc:
+            raise ImportError_(str(exc)) from None
+        items = read_csv(path, layout, account.scale, encoding=encoding)
+    result.previous = store.previous_import_of(account.id, sha)
 
     rows = with_fingerprints(_split(items, result, account))
     try:
