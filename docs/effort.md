@@ -11,7 +11,9 @@
 | Import history and undo | `tally imports` lists every import with its counts; `tally undo ID` removes exactly the rows that import added, with confirmation; tests and docs | 1 | ~175k tokens | 10 min |
 | Review of undo | A defect-focused review of the new code; fixed explicit deletes with true counts, the in-transaction existence check, tolerant VACUUM, local dates, a shared confirmation helper, and a warning about undoing an earlier overlapping import | 1 | ~190k tokens | 10 min |
 | Review of the core | A defect-focused review of every module, eight findings fixed: rule amounts on non-2-decimal currencies, a crash on `header = false` with a named memo column, quadratic OFX line counting, SQLite errors as tracebacks, a header printed from a non-statement file, a lowercase `<ofx>` offset bug, broken-pipe noise, and one file pass fewer per CSV import; eleven tests | 1 | ~215k tokens | 20 min |
-| **Total** | | **1** | **~215k tokens** | **~145 min** |
+| **Total** | | **1** | **~215k tokens** | **~110 min** |
+
+The wall-clock total is measured, from the first command at 12:04 UTC to the last push at 13:52 UTC, with the five pauses for review and merging left out. The per-piece figures above are estimates and sum to more than that, because pieces overlapped: tests were written alongside the code they cover, and documentation alongside the decisions it records.
 
 ## Defects found and fixed along the way
 
