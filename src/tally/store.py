@@ -17,7 +17,7 @@ import sqlite3
 import stat
 import sys
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -243,32 +243,31 @@ class Store:
             count = conn.execute(
                 "SELECT COUNT(*) FROM transactions WHERE account_id = ?", (account.id,)
             ).fetchone()[0]
+            conn.execute("DELETE FROM transactions WHERE account_id = ?", (account.id,))
+            conn.execute("DELETE FROM imports WHERE account_id = ?", (account.id,))
             conn.execute("DELETE FROM accounts WHERE id = ?", (account.id,))
-        # Reclaim the space so the deleted data does not linger in the file.
-        self.conn.execute("VACUUM")
+        if count:
+            self._vacuum()
         return count
 
     # -- imports ------------------------------------------------------------
 
+    _IMPORT_SELECT = """
+        SELECT i.id, a.name AS account, i.file_name, i.imported_at,
+               i.added, i.duplicates, i.skipped
+        FROM imports i JOIN accounts a ON a.id = i.account_id
+    """
+
     def previous_import_of(self, account_id: int, sha256: str) -> ImportRecord | None:
         row = self.conn.execute(
-            """
-            SELECT i.id, a.name AS account, i.file_name, i.imported_at,
-                   i.added, i.duplicates, i.skipped
-            FROM imports i JOIN accounts a ON a.id = i.account_id
-            WHERE i.account_id = ? AND i.file_sha256 = ?
-            ORDER BY i.id DESC LIMIT 1
-            """,
+            self._IMPORT_SELECT
+            + " WHERE i.account_id = ? AND i.file_sha256 = ? ORDER BY i.id DESC LIMIT 1",
             (account_id, sha256),
         ).fetchone()
         return ImportRecord(**row) if row else None
 
     def imports(self, account: str | None = None) -> list[ImportRecord]:
-        sql = """
-            SELECT i.id, a.name AS account, i.file_name, i.imported_at,
-                   i.added, i.duplicates, i.skipped
-            FROM imports i JOIN accounts a ON a.id = i.account_id
-        """
+        sql = self._IMPORT_SELECT
         params: list[object] = []
         if account is not None:
             sql += " WHERE a.name = ?"
@@ -277,32 +276,40 @@ class Store:
         return [ImportRecord(**row) for row in rows]
 
     def import_record(self, import_id: int) -> ImportRecord:
-        row = self.conn.execute(
-            """
-            SELECT i.id, a.name AS account, i.file_name, i.imported_at,
-                   i.added, i.duplicates, i.skipped
-            FROM imports i JOIN accounts a ON a.id = i.account_id WHERE i.id = ?
-            """,
-            (import_id,),
-        ).fetchone()
+        row = self.conn.execute(self._IMPORT_SELECT + " WHERE i.id = ?", (import_id,)).fetchone()
         if row is None:
-            raise TallyError(f"no import with id {import_id}", hint="See `tally imports`.")
+            raise _no_import(import_id)
         return ImportRecord(**row)
 
     def undo_import(self, import_id: int) -> int:
         """Remove the transactions one import added, and its record. Returns rows removed.
 
         Only rows this import inserted go: rows it found already there belong
-        to the earlier import that added them and are untouched.
+        to the earlier import that added them and are untouched. The deletes
+        are explicit rather than left to ON DELETE CASCADE, and the existence
+        check happens inside the write transaction, so a second copy of Tally
+        undoing the same import is told it is gone rather than succeeding at
+        nothing.
         """
-        record = self.import_record(import_id)
         with self.write() as conn:
             count = conn.execute(
-                "SELECT COUNT(*) FROM transactions WHERE import_id = ?", (record.id,)
-            ).fetchone()[0]
-            conn.execute("DELETE FROM imports WHERE id = ?", (record.id,))
-        self.conn.execute("VACUUM")
+                "DELETE FROM transactions WHERE import_id = ?", (import_id,)
+            ).rowcount
+            if conn.execute("DELETE FROM imports WHERE id = ?", (import_id,)).rowcount == 0:
+                raise _no_import(import_id)
+        if count:
+            self._vacuum()
         return count
+
+    def _vacuum(self) -> None:
+        """Reclaim the space deleted rows held, so they do not linger in the file.
+
+        Best effort: another copy of Tally reading at this moment makes VACUUM
+        fail with "database is locked", and the deletion has already committed.
+        The space is reclaimed by the next VACUUM instead.
+        """
+        with suppress(sqlite3.OperationalError):
+            self.conn.execute("VACUUM")
 
     def record_import(
         self,
@@ -402,6 +409,10 @@ class Store:
         sql += " ORDER BY t.date, t.id"
         for row in self.conn.execute(sql, params):
             yield Transaction(**row)
+
+
+def _no_import(import_id: int) -> TallyError:
+    return TallyError(f"no import with id {import_id}", hint="See `tally imports`.")
 
 
 class _StrictAbort(Exception):

@@ -82,6 +82,12 @@ undoing the later of two overlapping statements leaves the overlap in place.
 After an undo the same file imports as new, which is the point: a wrong
 layout or a wrong account is corrected by undo, fix, import again.
 
+The other direction is the subtle one: undoing an *earlier* import removes
+rows that a later overlapping statement also contained and was told were
+"already there". Tally does not record which later import saw which row, so
+it warns before the undo when later imports into the account reported
+duplicates, and says to import those statements again to restore the rows.
+
 ## Process-wide `umask 077`
 
 Every file Tally writes (database, journal, exports via `--output`) is created

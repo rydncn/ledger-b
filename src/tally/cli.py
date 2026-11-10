@@ -7,6 +7,7 @@ import contextlib
 import os
 import sys
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 
 from tally import __version__
@@ -329,6 +330,27 @@ def _confirm(prompt: str) -> bool | None:
     return answer.strip().lower() in {"y", "yes"}
 
 
+def _require_confirmation(ctx: Context, question: str, consequence: str) -> bool:
+    """True to go ahead. False when the user said no. Raises when no answer could be had."""
+    if ctx.args.yes:
+        return True
+    answer = _confirm(question)
+    if answer is None:
+        raise UsageError(
+            f"{consequence}, and no confirmation could be read",
+            hint="Add --yes to confirm when not running interactively.",
+        )
+    return answer
+
+
+def _local_date(timestamp: str) -> str:
+    """The calendar date, in this computer's time zone, of a stored UTC timestamp."""
+    try:
+        return datetime.fromisoformat(timestamp).astimezone().date().isoformat()
+    except ValueError:
+        return timestamp[:10]
+
+
 # -- commands ----------------------------------------------------------------
 
 
@@ -393,7 +415,7 @@ def _report_import(result: ImportResult, show_rows: bool, style: Style) -> None:
         message(
             out,
             f"Note: this file was imported into {result.account} before, on "
-            f"{result.previous.imported_at[:10]}.",
+            f"{_local_date(result.previous.imported_at)}.",
         )
     if result.rolled_back:
         message(
@@ -614,7 +636,7 @@ def cmd_imports(ctx: Context) -> int:
     records = ctx.store.imports(ctx.args.account)
     header = ["Id", "When", "Account", "File", "Added", "Already there", "Skipped"]
     rows: list[list[object]] = [
-        [r.id, r.imported_at[:10], r.account, r.file_name, r.added, r.duplicates, r.skipped]
+        [r.id, _local_date(r.imported_at), r.account, r.file_name, r.added, r.duplicates, r.skipped]
         for r in records
     ]
     json_rows = [
@@ -637,38 +659,35 @@ def cmd_undo(ctx: Context) -> int:
     record = ctx.store.import_record(ctx.args.id)
     what = (
         f"import {record.id} ({record.file_name} into {record.account} on "
-        f"{record.imported_at[:10]}, {record.added} transaction(s) added)"
+        f"{_local_date(record.imported_at)}, {record.added} transaction(s) added)"
     )
-    if not ctx.args.yes:
-        answer = _confirm(f"Undo {what}?")
-        if answer is None:
-            raise UsageError(
-                f"undoing {what} deletes the transactions it added, "
-                "and no confirmation could be read",
-                hint="Add --yes to confirm when not running interactively.",
-            )
-        if not answer:
-            message(sys.stdout, "Nothing undone.")
-            return EXIT_OK
+    later = [r for r in ctx.store.imports(record.account) if r.id > record.id and r.duplicates]
+    if later:
+        message(
+            sys.stdout,
+            "Note: later imports into this account found rows already there, some of which "
+            "this import may have added. Undoing it removes those too; import the later "
+            "statements again to restore them.",
+        )
+    if not _require_confirmation(
+        ctx, f"Undo {what}?", f"undoing {what} deletes the transactions it added"
+    ):
+        message(sys.stdout, "Nothing undone.")
+        return EXIT_OK
     count = ctx.store.undo_import(record.id)
     message(sys.stdout, f"Undid import {record.id}: removed {count} transaction(s).")
     return EXIT_OK
 
 
 def cmd_forget(ctx: Context) -> int:
-    name = ctx.args.name
-    account = ctx.store.account(name)
-    if not ctx.args.yes:
-        answer = _confirm(f"Delete account {account.name!r} and every transaction in it?")
-        if answer is None:
-            raise UsageError(
-                f"forgetting {account.name!r} deletes everything imported into it, "
-                "and no confirmation could be read",
-                hint="Add --yes to confirm when not running interactively.",
-            )
-        if not answer:
-            message(sys.stdout, "Nothing deleted.")
-            return EXIT_OK
+    account = ctx.store.account(ctx.args.name)
+    if not _require_confirmation(
+        ctx,
+        f"Delete account {account.name!r} and every transaction in it?",
+        f"forgetting {account.name!r} deletes everything imported into it",
+    ):
+        message(sys.stdout, "Nothing deleted.")
+        return EXIT_OK
     count = ctx.store.forget_account(account.name)
     message(sys.stdout, f"Forgot account {account.name} and {count} transaction(s).")
     return EXIT_OK
