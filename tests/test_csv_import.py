@@ -226,3 +226,105 @@ def test_layout_from_toml_matches_dataclass():
         'thousands_separator = "."\n'
     )
     assert config.layouts["card"] == CARD
+
+
+BALANCED = Layout(
+    name="b",
+    date="Date",
+    description="Description",
+    amount="Amount",
+    balance="Balance",
+    date_format="%Y-%m-%d",
+    thousands_separator="",
+)
+
+
+def balance_notes(items):
+    return [(n.line, n.text) for n in notes(items) if "balance" in n.text]
+
+
+def test_balance_check_passes_oldest_first(tmp_path):
+    p = write(
+        tmp_path,
+        "Date,Description,Amount,Balance\n"
+        "2026-10-01,A,-10.00,90.00\n2026-10-02,B,25.00,115.00\n2026-10-03,C,-0.01,114.99\n",
+    )
+    items = list(read_csv(p, BALANCED, 2))
+    assert len(rows(items)) == 3 and balance_notes(items) == []
+
+
+def test_balance_check_passes_newest_first(tmp_path):
+    p = write(
+        tmp_path,
+        "Date,Description,Amount,Balance\n"
+        "2026-10-03,C,-0.01,114.99\n2026-10-02,B,25.00,115.00\n2026-10-01,A,-10.00,90.00\n",
+    )
+    assert balance_notes(read_csv(p, BALANCED, 2)) == []
+
+
+def test_balance_check_notes_mismatch_by_line_without_values(tmp_path):
+    p = write(
+        tmp_path,
+        "Date,Description,Amount,Balance\n"
+        "2026-10-01,A,-10.00,90.00\n2026-10-02,B,25.00,115.00\n"
+        "2026-10-03,SECRET,-0.01,200.00\n2026-10-04,D,1.00,201.00\n",
+    )
+    items = list(read_csv(p, BALANCED, 2))
+    noted = balance_notes(items)
+    assert noted[0][0] == 4 and "does not follow" in noted[0][1]
+    assert noted[-1][0] is None and noted[-1][1].startswith("1 row(s) did not follow")
+    assert len(noted) == 2
+    for _, text in noted:
+        assert "200" not in text and "SECRET" not in text
+    # The rows are still imported; the check only warns.
+    assert len(rows(items)) == 4
+
+
+def test_balance_check_with_wrong_sign_layout_flags_every_row(tmp_path):
+    p = write(
+        tmp_path,
+        "Date,Description,Amount,Balance\n"
+        "2026-10-01,A,10.00,90.00\n2026-10-02,B,10.00,80.00\n2026-10-03,C,10.00,70.00\n",
+    )
+    noted = balance_notes(read_csv(p, BALANCED, 2))
+    assert [ln for ln, _ in noted] == [3, 4, None]
+
+
+def test_balance_check_skips_unreadable_or_empty_balances(tmp_path):
+    p = write(
+        tmp_path,
+        "Date,Description,Amount,Balance\n"
+        "2026-10-01,A,-10.00,90.00\n2026-10-02,B,25.00,n/a\n2026-10-03,C,-1.00,\n"
+        "2026-10-04,D,-1.00,500.00\n2026-10-05,E,-1.00,499.00\n",
+    )
+    items = list(read_csv(p, BALANCED, 2))
+    noted = balance_notes(items)
+    assert noted == [(3, "the balance could not be read, so this row was not checked")]
+    assert len(rows(items)) == 5
+
+
+def test_balance_check_waits_for_an_unambiguous_pair(tmp_path):
+    # Zero-amount rows cannot tell oldest-first from newest-first; the check
+    # decides on the first pair that can, then applies that order.
+    p = write(
+        tmp_path,
+        "Date,Description,Amount,Balance\n"
+        "2026-10-01,A,0.00,90.00\n2026-10-02,B,0.00,90.00\n2026-10-03,C,-5.00,85.00\n"
+        "2026-10-04,D,-5.00,80.00\n",
+    )
+    assert balance_notes(read_csv(p, BALANCED, 2)) == []
+
+
+def test_sample_balance_column_confirms_sign_decisions(samples):
+    layout = Layout(
+        name="current",
+        date="Date",
+        description="Description",
+        money_out="Money Out",
+        money_in="Money In",
+        balance="Balance",
+        date_format="%d/%m/%Y",
+    )
+    items = list(read_csv(samples / "current-account.csv", layout, 2))
+    assert balance_notes(items) == []
+    assert len(rows(items)) == 5

@@ -199,18 +199,21 @@ def test_explain(ready, samples):
 def test_import_skipped_rows_exit_code_and_privacy(ready, tmp_path):
     f = tmp_path / "s.csv"
     f.write_text(
-        "Date,Description,Money Out,Money In\n"
-        "01/10/2026,FINE PAYEE,1.00,\n"
-        "bad date,PRIVATE PAYEE NAME,1.00,\n"
-        "02/10/2026,ANOTHER PRIVATE ONE,12.3.4,\n"
+        "Date,Description,Money Out,Money In,Balance\n"
+        "01/10/2026,FINE PAYEE,1.00,,99.00\n"
+        "bad date,PRIVATE PAYEE NAME,1.00,,98.00\n"
+        "02/10/2026,ANOTHER PRIVATE ONE,12.3.4,,97.00\n"
+        "03/10/2026,THIRD PRIVATE,5.00,,50.00\n"
     )
     r = ready("import", str(f), "--account", "current", "--layout", "current-account")
     assert r.code == EXIT_PARTIAL
-    assert "1 added, 0 already there, 2 skipped" in r.out
+    assert "2 added, 0 already there, 2 skipped" in r.out
     assert "skipped line 3: could not read the date" in r.out
     assert "skipped line 4: could not read the money-out amount" in r.out
+    assert "note: line 5: the balance does not follow" in r.out
     assert "PRIVATE" not in r.out + r.err
     assert "12.3.4" not in r.out and "bad date" not in r.out
+    assert "99.00" not in r.out and "50.00" not in r.out
     assert "--show-rows" in r.out
 
     # Re-import with --show-rows: the user asked, so the values appear.
@@ -223,7 +226,7 @@ def test_import_skipped_rows_exit_code_and_privacy(ready, tmp_path):
 
 def test_strict_import_rolls_back(ready, tmp_path):
     f = tmp_path / "s.csv"
-    f.write_text("Date,Description,Money Out,Money In\n01/10/2026,A,1.00,\nbad,B,1.00,\n")
+    f.write_text("Date,Description,Money Out,Money In,Balance\n01/10/2026,A,1.00,,\nbad,B,1.00,,\n")
     r = ready("import", str(f), "--account", "current", "--layout", "current-account", "--strict")
     assert r.code == EXIT_ERROR
     assert "Imported nothing" in r.out

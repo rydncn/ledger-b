@@ -42,6 +42,7 @@ thousands_separator = ","
 | `amount` | one of these | | Column holding a signed amount: negative is money out. |
 | `money_out`, `money_in` | two forms | | Two columns, one for each direction. Each holds a magnitude; a minus sign or brackets in either is ignored and noted, because the column already says which way the money went. If both are filled on one row, the row's amount is in minus out. |
 | `memo` | no | | An extra text column kept alongside the description. Rules match on description and memo together; payee reports group by description only. |
+| `balance` | no | | The running balance column, if the export has one. Tally then checks that each row's balance follows from the previous row's balance and the amount it read (statements may run oldest-first or newest-first; the first pair of rows that can tell decides). A row that does not follow is noted by line number, which catches a layout with the wrong sign or column and statements with rows missing. Rows are imported either way. |
 | `date_format` | no | `%d/%m/%Y` | `strftime` codes. `%m/%d/%Y` for US-style dates, `%Y-%m-%d` for ISO, `%d %b %Y` for `05 Oct 2026`. |
 | `decimal_separator` | no | `.` | One character. |
 | `thousands_separator` | no | `,` | One character, or `""` for none. Grouping is checked: with `,` as thousands separator, `4,20` is rejected rather than read as 420. |

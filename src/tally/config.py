@@ -50,6 +50,7 @@ class Layout:
     money_in: str | int | None = None
     money_out: str | int | None = None
     memo: str | int | None = None
+    balance: str | int | None = None
     date_format: str = "%d/%m/%Y"
     decimal_separator: str = "."
     thousands_separator: str = ","
@@ -118,6 +119,7 @@ _LAYOUT_KEYS = {
     "money_in",
     "money_out",
     "memo",
+    "balance",
     "date_format",
     "decimal_separator",
     "thousands_separator",
@@ -218,6 +220,7 @@ def parse_layout(name: str, table: object) -> Layout:
         money_in=money_in,
         money_out=money_out,
         memo=_optional_column(table, where, "memo"),
+        balance=_optional_column(table, where, "balance"),
         date_format=date_format,
         decimal_separator=decimal,
         thousands_separator=thousands,
@@ -354,6 +357,7 @@ date = "Date"
 description = "Description"
 money_out = "Money Out"
 money_in = "Money In"
+balance = "Balance"          # optional: lets Tally check each row against the running balance
 date_format = "%d/%m/%Y"
 decimal_separator = "."
 thousands_separator = ","

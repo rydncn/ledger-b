@@ -105,6 +105,11 @@ the reason. The offending values are not shown unless you ask with
 scheduled job's log by accident. With `--strict`, a single unreadable row means
 nothing at all is imported.
 
+If the layout names the export's running `balance` column, Tally also checks
+that every row's balance follows from the previous one and the amount it
+read, and notes any row that does not. That is the quickest way to find a
+layout with the wrong sign or column, or a statement with rows missing.
+
 Problems with the whole file (not a statement, wrong columns for the layout,
 wrong currency for the account, not readable text) stop the import before
 anything is written.

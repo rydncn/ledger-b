@@ -32,6 +32,7 @@ def _resolve(layout: Layout, header: list[str] | None) -> dict[str, int]:
         "money_in": layout.money_in,
         "money_out": layout.money_out,
         "memo": layout.memo,
+        "balance": layout.balance,
     }
     columns: dict[str, int] = {}
     missing: list[str] = []
@@ -94,6 +95,7 @@ def _read(fh, layout: Layout, scale: int, encoding: str) -> Iterator[ParsedRow |
         columns = _resolve(layout, header)
         width_needed = max(columns.values()) + 1
         expected_width = len(header) if header is not None else None
+        balance_check = _BalanceCheck() if "balance" in columns else None
 
         while True:
             start_line = reader.line_num + 1
@@ -118,7 +120,9 @@ def _read(fh, layout: Layout, scale: int, encoding: str) -> Iterator[ParsedRow |
             if isinstance(result, RowProblem):
                 yield result
                 continue
-            parsed, signed = result
+            parsed, signed, balance = result
+            if balance_check is not None:
+                yield from balance_check.observe(parsed, balance)
             if repaired:
                 yield Note(
                     start_line,
@@ -132,6 +136,8 @@ def _read(fh, layout: Layout, scale: int, encoding: str) -> Iterator[ParsedRow |
                     "the column decides the direction, so the sign was ignored",
                 )
             yield parsed
+        if balance_check is not None:
+            yield from balance_check.summary()
     except csv.Error as exc:
         raise ImportError_(
             f"line {reader.line_num}: the file is not readable as CSV ({exc})",
@@ -169,7 +175,7 @@ def _next_nonblank(reader) -> list[str] | None:
 
 def _parse_row(
     row: list[str], columns: dict[str, int], layout: Layout, scale: int, line: int
-) -> tuple[ParsedRow, bool] | RowProblem:
+) -> tuple[ParsedRow, bool, int | _Unreadable | None] | RowProblem:
     if any("\x00" in cell for cell in row):
         return RowProblem(line, "the row contains binary data")
     date_text = row[columns["date"]].strip()
@@ -222,4 +228,69 @@ def _parse_row(
             return RowProblem(line, "the amount is empty")
     if layout.negate:
         amount = -amount
-    return ParsedRow(line, date.isoformat(), amount, description, memo), signed
+    balance: int | _Unreadable | None = None
+    if "balance" in columns:
+        try:
+            balance = parse_amount(row[columns["balance"]], **kw)
+        except AmountError:
+            balance = _UNREADABLE
+    return ParsedRow(line, date.isoformat(), amount, description, memo), signed, balance
+
+
+class _Unreadable:
+    """A balance cell that could not be read; the check skips over it."""
+
+
+_UNREADABLE = _Unreadable()
+
+
+class _BalanceCheck:
+    """Check each row's balance against the previous row's balance and amount.
+
+    Statements list rows oldest first or newest first; the first pair of
+    rows that can tell the two apart decides. A row whose balance does not
+    follow from its neighbour is noted by line, with no values. This catches
+    a layout with the wrong sign or column, and rows missing from the file.
+    """
+
+    def __init__(self) -> None:
+        self.order: str | None = None  # "forward" (oldest first) or "reverse"
+        self.prev: tuple[int, int] | None = None  # (amount, balance)
+        self.mismatches = 0
+        self.unreadable = 0
+
+    def observe(self, row: ParsedRow, balance: int | _Unreadable | None) -> Iterator[Note]:
+        if balance is None or isinstance(balance, _Unreadable):
+            if isinstance(balance, _Unreadable):
+                self.unreadable += 1
+                yield Note(row.line, "the balance could not be read, so this row was not checked")
+            self.prev = None
+            return
+        if self.prev is not None:
+            prev_amount, prev_balance = self.prev
+            forward_ok = balance - prev_balance == row.amount_minor
+            reverse_ok = prev_balance - balance == prev_amount
+            if self.order is None:
+                if forward_ok and not reverse_ok:
+                    self.order = "forward"
+                elif reverse_ok and not forward_ok:
+                    self.order = "reverse"
+                elif not forward_ok and not reverse_ok:
+                    self.mismatches += 1
+                    yield Note(row.line, _MISMATCH)
+            elif not (forward_ok if self.order == "forward" else reverse_ok):
+                self.mismatches += 1
+                yield Note(row.line, _MISMATCH)
+        self.prev = (row.amount_minor, balance)
+
+    def summary(self) -> Iterator[Note]:
+        if self.mismatches:
+            yield Note(
+                None,
+                f"{self.mismatches} row(s) did not follow from the running balance; "
+                "check the layout's sign and columns, or whether the statement is "
+                "missing rows",
+            )
+
+
+_MISMATCH = "the balance does not follow from the previous row's balance and the amount read"

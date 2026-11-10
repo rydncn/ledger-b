@@ -7,7 +7,8 @@
 | Tests | 163 tests: unit, end-to-end CLI via subprocess, duplicate handling, two-process concurrency, 100k-row import, privacy of messages, file permissions | 1 | ~120k tokens | 20 min |
 | Docs, CI, samples | README, configuration reference, decisions record, MIT licence, three-OS CI workflow, the three sample files byte-exact | 1 | ~130k tokens | 10 min |
 | CI fix | Windows reports the NUL device as a terminal, so `tally forget` prompted and exited 0 in a scheduled job; an unanswered prompt is now a refusal with the `--yes` hint. Bumped deprecated action versions | 1 | ~145k tokens | 10 min |
-| **Total** | | **1** | **~145k tokens** | **~90 min** |
+| Running-balance check | Optional `balance` layout column; each row checked against its neighbour with statement order inferred; mismatches noted by line; seven tests; docs | 1 | ~160k tokens | 15 min |
+| **Total** | | **1** | **~160k tokens** | **~105 min** |
 
 ## Defects found and fixed along the way
 
