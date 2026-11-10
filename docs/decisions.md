@@ -63,6 +63,16 @@ the row's contents. `--show-rows` is the explicit opt-in. Configuration
 contents (rule text, layout names) can appear in messages, since they are the
 user's own settings rather than statement data.
 
+## The running-balance check warns, it does not reject
+
+When a layout names the balance column, each row is checked against its
+neighbour. A mismatch is reported by line number only, and the row is still
+imported, because the amount is what the bank said and the mismatch is more
+often a missing row or a wrong layout setting than a wrong amount. The import
+summary ends with a count so a scheduled job's log shows it. Statement order
+(oldest-first or newest-first) is inferred from the first pair of rows that
+can tell the two apart, rather than configured, since banks do not say.
+
 ## Process-wide `umask 077`
 
 Every file Tally writes (database, journal, exports via `--output`) is created
@@ -88,9 +98,6 @@ published on GitHub; it is the owner's to change.
 
 ## Not done, deliberately
 
-- A `balance` layout column with a running-balance consistency check would
-  catch misconfigured layouts (wrong `negate`, wrong column) and missing rows.
-  Worth adding; left out to keep the first release focused.
 - OFX files are read whole into memory. Bank OFX exports are small; CSV, which
   can be very large, streams.
 - No manual category overrides. The brief asked for rules; a rule on the exact
