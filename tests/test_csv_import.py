@@ -281,13 +281,17 @@ def test_balance_check_notes_mismatch_by_line_without_values(tmp_path):
 
 
 def test_balance_check_with_wrong_sign_layout_flags_every_row(tmp_path):
+    # Spending shown as positive but no negate: the balances fall while the
+    # amounts rise, in neither order. (Amounts vary, because a flipped sign
+    # on identical amounts is indistinguishable from a newest-first file.)
     p = write(
         tmp_path,
         "Date,Description,Amount,Balance\n"
-        "2026-10-01,A,10.00,90.00\n2026-10-02,B,10.00,80.00\n2026-10-03,C,10.00,70.00\n",
+        "2026-10-01,A,10.00,90.00\n2026-10-02,B,20.00,70.00\n2026-10-03,C,30.00,40.00\n",
     )
     noted = balance_notes(read_csv(p, BALANCED, 2))
     assert [ln for ln, _ in noted] == [3, 4, None]
+    assert noted[-1][1].startswith("2 row(s)")
 
 
 def test_balance_check_skips_unreadable_or_empty_balances(tmp_path):
