@@ -93,3 +93,17 @@ def test_ofx_fitid_dedup_even_when_text_differs(tmp_path, samples):
     r = import_file(store, CONFIG, changed, "a")
     assert (r.added, r.duplicates) == (0, 2)
     assert r.previous is None  # a different file, same transactions
+
+
+def test_undo_removes_only_what_that_import_added(tmp_path):
+    store = _store(tmp_path)
+    sept = _write(tmp_path / "sept.csv", "2026-09-30,B,-2.00\n2026-10-01,COFFEE,-3.00\n")
+    octo = _write(tmp_path / "oct.csv", "2026-10-01,COFFEE,-3.00\n2026-10-02,C,-4.00\n")
+    import_file(store, CONFIG, sept, "a", layout_name="l")
+    import_file(store, CONFIG, octo, "a", layout_name="l")
+    records = store.imports("a")
+    assert [(r.added, r.duplicates) for r in records] == [(2, 0), (1, 1)]
+    # Undo October: COFFEE stays, because September added it.
+    assert store.undo_import(records[1].id) == 1
+    assert sorted(t.description for t in store.transactions()) == ["B", "COFFEE"]
+    assert [r.id for r in store.imports()] == [records[0].id]

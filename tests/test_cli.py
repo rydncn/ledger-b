@@ -344,3 +344,62 @@ def test_colour_only_on_a_terminal(ready, samples):
 def test_errors_go_to_stderr_only(tally):
     r = tally("explain", "1")
     assert r.out == "" and r.err.startswith("tally: error:") and r.code == EXIT_ERROR
+
+
+def test_imports_and_undo(ready, samples):
+    ready(
+        "import",
+        str(samples / "current-account.csv"),
+        "--account",
+        "current",
+        "--layout",
+        "current-account",
+    )
+    ready(
+        "import",
+        str(samples / "current-account.csv"),
+        "--account",
+        "current",
+        "--layout",
+        "current-account",
+    )
+    ready("import", str(samples / "savings.ofx"), "--account", "savings")
+    records = json.loads(ready("imports", "--format", "json").out)
+    assert [(r["id"], r["account"], r["added"], r["duplicates"]) for r in records] == [
+        (1, "current", 5, 0),
+        (2, "current", 0, 5),
+        (3, "savings", 2, 0),
+    ]
+    assert len(json.loads(ready("imports", "--account", "savings", "--format", "json").out)) == 1
+    table = ready("imports").out
+    assert "current-account.csv" in table and "Already there" in table
+
+    # Undoing the duplicate import removes nothing, since it added nothing.
+    r = ready("undo", "2", "--yes")
+    assert r.code == EXIT_OK and "removed 0 transaction(s)" in r.out
+    assert len(json.loads(ready("transactions", "--format", "json").out)) == 7
+
+    # Without --yes and without a terminal: refused, nothing changes.
+    r = ready("undo", "1")
+    assert r.code == EXIT_USAGE and "--yes" in r.err
+    assert len(json.loads(ready("transactions", "--format", "json").out)) == 7
+
+    r = ready("undo", "1", "--yes")
+    assert r.code == EXIT_OK and "removed 5 transaction(s)" in r.out
+    rows = json.loads(ready("transactions", "--format", "json").out)
+    assert {t["account"] for t in rows} == {"savings"} and len(rows) == 2
+    assert [r["id"] for r in json.loads(ready("imports", "--format", "json").out)] == [3]
+
+    r = ready("undo", "1", "--yes")
+    assert r.code == EXIT_ERROR and "no import with id 1" in r.err
+
+    # The file can be imported again afterwards: its rows are new once more.
+    r = ready(
+        "import",
+        str(samples / "current-account.csv"),
+        "--account",
+        "current",
+        "--layout",
+        "current-account",
+    )
+    assert "5 added, 0 already there" in r.out

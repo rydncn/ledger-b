@@ -8,7 +8,8 @@
 | Docs, CI, samples | README, configuration reference, decisions record, MIT licence, three-OS CI workflow, the three sample files byte-exact | 1 | ~130k tokens | 10 min |
 | CI fix | Windows reports the NUL device as a terminal, so `tally forget` prompted and exited 0 in a scheduled job; an unanswered prompt is now a refusal with the `--yes` hint. Bumped deprecated action versions | 1 | ~145k tokens | 10 min |
 | Running-balance check | Optional `balance` layout column; each row checked against its neighbour with statement order inferred; mismatches noted by line; seven tests; docs | 1 | ~160k tokens | 15 min |
-| **Total** | | **1** | **~160k tokens** | **~105 min** |
+| Import history and undo | `tally imports` lists every import with its counts; `tally undo ID` removes exactly the rows that import added, with confirmation; tests and docs | 1 | ~175k tokens | 10 min |
+| **Total** | | **1** | **~175k tokens** | **~115 min** |
 
 ## Defects found and fixed along the way
 

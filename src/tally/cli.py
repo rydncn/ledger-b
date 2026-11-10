@@ -182,6 +182,24 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(func=cmd_payees)
 
     s = sub.add_parser(
+        "imports",
+        parents=[common],
+        help="list imports, with what each added",
+    )
+    s.add_argument("--account", metavar="NAME", help="only this account")
+    _format_option(s)
+    s.set_defaults(func=cmd_imports)
+
+    s = sub.add_parser(
+        "undo",
+        parents=[common],
+        help="remove the transactions one import added",
+    )
+    s.add_argument("id", type=int, help="import id, from `tally imports`")
+    s.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    s.set_defaults(func=cmd_undo)
+
+    s = sub.add_parser(
         "forget", parents=[common], help="delete an account and everything imported into it"
     )
     s.add_argument("name")
@@ -589,6 +607,51 @@ def cmd_payees(ctx: Context) -> int:
             }
         )
     _emit(ctx, header, rows, json_rows, align_right=[0, 3, 4])
+    return EXIT_OK
+
+
+def cmd_imports(ctx: Context) -> int:
+    records = ctx.store.imports(ctx.args.account)
+    header = ["Id", "When", "Account", "File", "Added", "Already there", "Skipped"]
+    rows: list[list[object]] = [
+        [r.id, r.imported_at[:10], r.account, r.file_name, r.added, r.duplicates, r.skipped]
+        for r in records
+    ]
+    json_rows = [
+        {
+            "id": r.id,
+            "imported_at": r.imported_at,
+            "account": r.account,
+            "file": r.file_name,
+            "added": r.added,
+            "duplicates": r.duplicates,
+            "skipped": r.skipped,
+        }
+        for r in records
+    ]
+    _emit(ctx, header, rows, json_rows, align_right=[0, 4, 5, 6])
+    return EXIT_OK
+
+
+def cmd_undo(ctx: Context) -> int:
+    record = ctx.store.import_record(ctx.args.id)
+    what = (
+        f"import {record.id} ({record.file_name} into {record.account} on "
+        f"{record.imported_at[:10]}, {record.added} transaction(s) added)"
+    )
+    if not ctx.args.yes:
+        answer = _confirm(f"Undo {what}?")
+        if answer is None:
+            raise UsageError(
+                f"undoing {what} deletes the transactions it added, "
+                "and no confirmation could be read",
+                hint="Add --yes to confirm when not running interactively.",
+            )
+        if not answer:
+            message(sys.stdout, "Nothing undone.")
+            return EXIT_OK
+    count = ctx.store.undo_import(record.id)
+    message(sys.stdout, f"Undid import {record.id}: removed {count} transaction(s).")
     return EXIT_OK
 
 

@@ -263,6 +263,47 @@ class Store:
         ).fetchone()
         return ImportRecord(**row) if row else None
 
+    def imports(self, account: str | None = None) -> list[ImportRecord]:
+        sql = """
+            SELECT i.id, a.name AS account, i.file_name, i.imported_at,
+                   i.added, i.duplicates, i.skipped
+            FROM imports i JOIN accounts a ON a.id = i.account_id
+        """
+        params: list[object] = []
+        if account is not None:
+            sql += " WHERE a.name = ?"
+            params.append(account)
+        rows = self.conn.execute(sql + " ORDER BY i.id", params).fetchall()
+        return [ImportRecord(**row) for row in rows]
+
+    def import_record(self, import_id: int) -> ImportRecord:
+        row = self.conn.execute(
+            """
+            SELECT i.id, a.name AS account, i.file_name, i.imported_at,
+                   i.added, i.duplicates, i.skipped
+            FROM imports i JOIN accounts a ON a.id = i.account_id WHERE i.id = ?
+            """,
+            (import_id,),
+        ).fetchone()
+        if row is None:
+            raise TallyError(f"no import with id {import_id}", hint="See `tally imports`.")
+        return ImportRecord(**row)
+
+    def undo_import(self, import_id: int) -> int:
+        """Remove the transactions one import added, and its record. Returns rows removed.
+
+        Only rows this import inserted go: rows it found already there belong
+        to the earlier import that added them and are untouched.
+        """
+        record = self.import_record(import_id)
+        with self.write() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM transactions WHERE import_id = ?", (record.id,)
+            ).fetchone()[0]
+            conn.execute("DELETE FROM imports WHERE id = ?", (record.id,))
+        self.conn.execute("VACUUM")
+        return count
+
     def record_import(
         self,
         account: Account,
