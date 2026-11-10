@@ -1,6 +1,8 @@
+import hashlib
+
 import pytest
 
-from tally.encoding import detect_encoding
+from tally.encoding import detect_encoding, scan_file
 
 
 def test_utf8_bom(tmp_path):
@@ -61,3 +63,15 @@ def test_large_file_is_scanned_in_chunks(tmp_path):
             fh.write(b"x" * 10000 + "é\n".encode())
         fh.write("é".encode("latin-1"))  # invalid UTF-8 right at the end
     assert detect_encoding(p) == "cp1252"
+
+
+def test_scan_file_returns_encoding_and_digest_in_one_pass(tmp_path):
+    p = tmp_path / "f.csv"
+    data = "CAFÉ NERO\n".encode("latin-1") * 1000
+    p.write_bytes(data)
+    assert scan_file(p) == ("cp1252", hashlib.sha256(data).hexdigest())
+    p.write_bytes(b"\xef\xbb\xbfplain\n")
+    assert scan_file(p)[0] == "utf-8-sig"
+    assert scan_file(p, "latin-1")[0] == "utf-8-sig"
+    p.write_bytes(b"plain\n")
+    assert scan_file(p, "latin-1") == ("latin-1", hashlib.sha256(b"plain\n").hexdigest())

@@ -89,7 +89,7 @@ account = "savings"
 | `category` | Required. The category to assign. |
 | `description` | Text that must appear in the description (or memo), ignoring case. |
 | `pattern` | A regular expression (Python syntax) that must match somewhere in the description (or memo), ignoring case. |
-| `amount_min`, `amount_max` | Inclusive bounds on the signed amount. Money out is negative, so `amount_max = "0"` means "spending only" and `amount_min = "0.01"` means "income only". Write amounts as strings so they stay exact. |
+| `amount_min`, `amount_max` | Inclusive bounds on the signed amount, in the account's currency. Money out is negative, so `amount_max = "0"` means "spending only" and `amount_min = "0.01"` means "income only". Write amounts as strings so they stay exact; up to four decimal places are accepted, and the comparison is exact whatever the account's currency uses. |
 | `account` | The account name the transaction must belong to (case-insensitive). |
 
 Every rule needs at least one condition; all its conditions must hold for it to

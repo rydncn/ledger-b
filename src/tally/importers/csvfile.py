@@ -57,23 +57,28 @@ def _resolve(layout: Layout, header: list[str] | None) -> dict[str, int]:
         else:
             missing.append(repr(spec))
     if missing:
-        found = ", ".join(repr(h) for h in header) if header else "none"
+        count = len(header) if header is not None else 0
         raise ImportError_(
             f"the file does not have the column(s) {', '.join(missing)} "
             f"that layout {layout.name!r} expects",
-            hint=f"Columns found in the file's header: {found}. "
-            "Check the layout, or that this is the right file.",
+            hint=f"The file's header has {count} column(s). Check the layout, or that this "
+            "is the right file. Run with --show-rows to see the header as the file has it.",
+            details=["Columns found in the file's header: " + ", ".join(repr(h) for h in header)]
+            if header
+            else [],
         )
     return columns
 
 
 def read_csv(
-    path: str | os.PathLike[str], layout: Layout, scale: int
+    path: str | os.PathLike[str], layout: Layout, scale: int, encoding: str | None = None
 ) -> Iterator[ParsedRow | RowProblem | Note]:
-    try:
-        encoding = detect_encoding(path, layout.encoding)
-    except ValueError as exc:
-        raise ImportError_(str(exc)) from None
+    """Yield the file's rows. ``encoding`` skips detection when the caller already knows."""
+    if encoding is None:
+        try:
+            encoding = detect_encoding(path, layout.encoding)
+        except ValueError as exc:
+            raise ImportError_(str(exc)) from None
     try:
         fh = open(path, encoding=encoding, newline="", errors="strict")  # noqa: SIM115
     except OSError as exc:

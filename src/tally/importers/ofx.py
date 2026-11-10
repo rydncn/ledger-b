@@ -82,23 +82,31 @@ def read_ofx(path: str | os.PathLike[str], scale: int) -> Iterator[ParsedRow | R
 
 
 def parse_ofx_text(text: str, scale: int) -> Iterator[ParsedRow | RowProblem | Note]:
-    start = text.find("<OFX>")
-    if start < 0:
-        start = text.upper().find("<OFX>")
-    if start < 0:
+    opening = re.search(r"<OFX>", text, re.IGNORECASE)
+    if opening is None:
         raise ImportError_(
             "the file does not contain an <OFX> element",
             hint="It does not look like an OFX statement. Nothing was imported.",
         )
 
+    start = opening.start()
     stack: list[str] = []
     current: dict[str, str] | None = None
     current_pos = 0
     currency: str | None = None
     transactions = 0
+    # Line numbers are counted forward from the last position asked about,
+    # so a file with many transactions is scanned once, not once per row.
+    counted_to = 0
+    line_at_counted = 1
 
     def line_of(pos: int) -> int:
-        return text.count("\n", 0, pos) + 1
+        nonlocal counted_to, line_at_counted
+        if pos < counted_to:  # not expected; positions only move forward
+            return text.count("\n", 0, pos) + 1
+        line_at_counted += text.count("\n", counted_to, pos)
+        counted_to = pos
+        return line_at_counted
 
     def finish():
         nonlocal current

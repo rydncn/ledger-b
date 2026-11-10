@@ -112,12 +112,17 @@ def test_multiline_quoted_field_keeps_line_numbers(tmp_path):
     assert problems(items)[0].line == 4
 
 
-def test_missing_columns_is_a_file_error_naming_header(tmp_path):
+def test_missing_columns_is_a_file_error_that_quotes_the_header_only_on_request(tmp_path):
     p = write(tmp_path, "Datum,Beschreibung,Betrag\n01/10/2026,x,1.00\n")
     with pytest.raises(ImportError_) as exc:
         list(read_csv(p, CURRENT, 2))
     text = str(exc.value)
-    assert "'Date'" in text and "'Money Out'" in text and "Datum" in text
+    assert "'Date'" in text and "'Money Out'" in text and "3 column(s)" in text
+    # The file's own words are kept out of the message, available on request.
+    assert "Datum" not in text
+    assert exc.value.details == [
+        "Columns found in the file's header: 'Datum', 'Beschreibung', 'Betrag'"
+    ]
 
 
 def test_header_matching_is_tolerant_of_case_and_spaces(tmp_path):
@@ -332,3 +337,9 @@ def test_sample_balance_column_confirms_sign_decisions(samples):
     items = list(read_csv(samples / "current-account.csv", layout, 2))
     assert balance_notes(items) == []
     assert len(rows(items)) == 5
+
+
+def test_read_csv_with_known_encoding_skips_detection(tmp_path):
+    p = write(tmp_path, "Date,Description,Amount\n01/10/2026,CAFÉ,1.00\n", encoding="latin-1")
+    layout = Layout(name="x", date="Date", description="Description", amount="Amount")
+    assert rows(read_csv(p, layout, 2, encoding="latin-1"))[0].description == "CAFÉ"

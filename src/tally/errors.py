@@ -17,10 +17,13 @@ class TallyError(Exception):
 
     exit_code = EXIT_ERROR
 
-    def __init__(self, message: str, *, hint: str | None = None):
+    def __init__(self, message: str, *, hint: str | None = None, details: list[str] | None = None):
         super().__init__(message)
         self.message = message
         self.hint = hint
+        # Lines that quote the input file. Shown only when the user asks
+        # (``tally import --show-rows``); never part of str(error).
+        self.details = details or []
 
     def __str__(self) -> str:
         if self.hint:
