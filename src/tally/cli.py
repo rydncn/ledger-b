@@ -295,13 +295,19 @@ def _emit(
             out.close()
 
 
-def _confirm(prompt: str) -> bool:
+def _confirm(prompt: str) -> bool | None:
+    """Ask a yes/no question. None means no answer could be had.
+
+    Standard input not being a terminal is one reason; end-of-input is
+    another. Windows reports the NUL device as a terminal, so the second
+    check matters there for scheduled jobs.
+    """
     if not sys.stdin.isatty():
-        return False
+        return None
     try:
         answer = input(f"{prompt} [y/N] ")
     except EOFError:
-        return False
+        return None
     return answer.strip().lower() in {"y", "yes"}
 
 
@@ -590,12 +596,14 @@ def cmd_forget(ctx: Context) -> int:
     name = ctx.args.name
     account = ctx.store.account(name)
     if not ctx.args.yes:
-        if not sys.stdin.isatty():
+        answer = _confirm(f"Delete account {account.name!r} and every transaction in it?")
+        if answer is None:
             raise UsageError(
-                f"forgetting {account.name!r} deletes everything imported into it",
+                f"forgetting {account.name!r} deletes everything imported into it, "
+                "and no confirmation could be read",
                 hint="Add --yes to confirm when not running interactively.",
             )
-        if not _confirm(f"Delete account {account.name!r} and every transaction in it?"):
+        if not answer:
             message(sys.stdout, "Nothing deleted.")
             return EXIT_OK
     count = ctx.store.forget_account(account.name)
