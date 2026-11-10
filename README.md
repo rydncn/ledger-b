@@ -63,6 +63,8 @@ reports show each currency separately.
 | `tally explain ID` | Why a transaction got its category: which rule matched and why the earlier ones did not. |
 | `tally report` | Spending and income by category for each month. `--exclude CATEGORY` leaves a category out, for example transfers between your own accounts. |
 | `tally payees` | The payees taking the most money. `--top N` (default 10, 0 for all). |
+| `tally imports` | Import history: when, which file, into which account, and how many rows were added, already there or skipped. |
+| `tally undo ID` | Remove the transactions one import added, leaving everything else. Asks first; `--yes` skips the question. |
 | `tally forget NAME` | Delete an account and everything imported into it. Asks first; `--yes` skips the question. |
 
 `transactions`, `uncategorised`, `report` and `payees` take `--account NAME`,
@@ -127,8 +129,8 @@ cannot slip a duplicate through.
 
 The one case Tally cannot see through is a bank changing the wording of a
 transaction's description between two exports of the same period. Check the
-import summary when that happens, and use `tally forget` and re-import if a
-month was double-counted.
+import summary when that happens; `tally imports` shows what each import
+added, and `tally undo ID` removes exactly those rows.
 
 ## Categories
 

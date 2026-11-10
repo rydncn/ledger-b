@@ -8,7 +8,9 @@
 | Docs, CI, samples | README, configuration reference, decisions record, MIT licence, three-OS CI workflow, the three sample files byte-exact | 1 | ~130k tokens | 10 min |
 | CI fix | Windows reports the NUL device as a terminal, so `tally forget` prompted and exited 0 in a scheduled job; an unanswered prompt is now a refusal with the `--yes` hint. Bumped deprecated action versions | 1 | ~145k tokens | 10 min |
 | Running-balance check | Optional `balance` layout column; each row checked against its neighbour with statement order inferred; mismatches noted by line; seven tests; docs | 1 | ~160k tokens | 15 min |
-| **Total** | | **1** | **~160k tokens** | **~105 min** |
+| Import history and undo | `tally imports` lists every import with its counts; `tally undo ID` removes exactly the rows that import added, with confirmation; tests and docs | 1 | ~175k tokens | 10 min |
+| Review of undo | A defect-focused review of the new code; fixed explicit deletes with true counts, the in-transaction existence check, tolerant VACUUM, local dates, a shared confirmation helper, and a warning about undoing an earlier overlapping import | 1 | ~190k tokens | 10 min |
+| **Total** | | **1** | **~190k tokens** | **~125 min** |
 
 ## Defects found and fixed along the way
 
@@ -21,3 +23,6 @@
 - Python 3.13+ no longer raises on NUL bytes in CSV, so a binary-ish file passed through as text. Found by the NUL test failing to raise; fixed by reporting rows containing NUL as binary data.
 - On Windows, `isatty()` is true for the NUL device, so `tally forget` in a scheduled job prompted, hit end-of-input and exited 0 instead of refusing without `--yes`. Found by the Windows CI job (a first attempt that only changed the test fixture failed the same way, which ruled out the inherited-console explanation); fixed by treating an unanswered prompt as a refusal with exit code 2.
 - The first version of the wrong-sign balance test used identical amounts on every row, which a flipped sign cannot distinguish from a newest-first statement, and a pipe to `tail` hid its failure from the shell so it was pushed red. Found by re-reading the failing assertion; fixed by varying the amounts and running checks with `pipefail`.
+
+- `tally undo` reported a count taken before deleting and relied on `ON DELETE CASCADE`, so a connection without foreign keys would have orphaned the rows while reporting success; and a second copy undoing the same import would have succeeded at nothing. Found by a code review of the branch; fixed with explicit deletes whose row counts are reported, and an existence check inside the write transaction.
+- `VACUUM` after `forget` or `undo` could raise if another copy of Tally was reading, turning a completed deletion into a traceback. Found by the same review; it is now best effort and skipped when nothing was removed.

@@ -73,6 +73,21 @@ summary ends with a count so a scheduled job's log shows it. Statement order
 (oldest-first or newest-first) is inferred from the first pair of rows that
 can tell the two apart, rather than configured, since banks do not say.
 
+## Undo removes what an import added, nothing more
+
+`tally undo ID` deletes the rows whose `import_id` is that import. Rows the
+import found already present belong to the earlier import that added them
+and stay. So undoing a re-import of the same file removes nothing, and
+undoing the later of two overlapping statements leaves the overlap in place.
+After an undo the same file imports as new, which is the point: a wrong
+layout or a wrong account is corrected by undo, fix, import again.
+
+The other direction is the subtle one: undoing an *earlier* import removes
+rows that a later overlapping statement also contained and was told were
+"already there". Tally does not record which later import saw which row, so
+it warns before the undo when later imports into the account reported
+duplicates, and says to import those statements again to restore the rows.
+
 ## Process-wide `umask 077`
 
 Every file Tally writes (database, journal, exports via `--output`) is created
